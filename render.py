@@ -7,6 +7,8 @@ from tqdm import tqdm
 
 from dataset import SwimmerDataset
 
+plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+
 def fig2array(fig):
     fig.canvas.draw()
     w, h = fig.canvas.get_width_height()
