@@ -1,0 +1,6 @@
+datasets/
+logs/
+models/
+videos/
+checkpoints/
+__pycache__/
