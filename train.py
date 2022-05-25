@@ -91,7 +91,7 @@ def train_swimmer():
     # model = ForwardModel(0, sample_graph.node_attrs.shape[1], sample_graph.edge_attrs.shape[1]).to(config.DEVICE)
     model = GCNForwardModel(sample_graph.node_attrs.shape[1], sample_graph.node_attrs.shape[1]).to(config.DEVICE)
     optimizer = Adam(model.parameters(), lr=config.LEARNING_RATE)
-    train_loader = DataLoader(ds, batch_size=config.BATCH_SIZE, collate_fn=ds.get_collate_fn())
+    train_loader = DataLoader(ds, batch_size=config.BATCH_SIZE, collate_fn=ds.get_collate_fn(), shuffle=True)
     def get_loss_fn():
         # 3p4r6v
         mse = nn.MSELoss()
