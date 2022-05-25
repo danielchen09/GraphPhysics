@@ -28,8 +28,7 @@ def main():
         print('Invalid device, options: --device=[cpu|cuda:0]')
         return
     config.DEVICE = args.device
-    if args.linux.lower in ['yes', 'y', 'true', 't']:
-        plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+    config.LINUX = args.linux.lower in ['yes', 'y', 'true', 't']
 
     if args.mode == 'train':
         train_swimmer()

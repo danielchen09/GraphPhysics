@@ -14,6 +14,7 @@ N_STEPS = 100
 NOISE = 1e-2
 MOMENTUM = 0
 LR_DECAY = 0.975
+LINUX = False
 
 DATASET_PATH = 'datasets/swimmer3_dataset_general.pkl'
 CHECKPOINT_DIR = 'checkpoints'

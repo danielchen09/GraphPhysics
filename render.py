@@ -58,6 +58,9 @@ def draw(n_links, node_attrs, title='', x_idx=0, y_idx=1):
     return fig
 
 def generate_video(frames, name='test.mp4'):
+    if config.LINUX:
+        plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+        
     height, width, _ = frames[0].shape
     dpi = 70
     orig_backend = matplotlib.get_backend()
