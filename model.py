@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch_geometric.nn as gnn
 import torch.nn.functional as F
+from dataset import MujocoDataset, SwimmerDataset
 
 from utils import *
 import config
@@ -138,16 +139,31 @@ class RecurrentForwardModel(nn.Module):
 class GCNForwardModel(nn.Module):
     def __init__(self, in_features, out_features):
         super(GCNForwardModel, self).__init__()
-        self.conv1 = gnn.GCNConv(in_features, 256)
-        self.conv2 = gnn.GCNConv(256, 256)
-        self.conv3 = gnn.GCNConv(256, out_features)
+        self.conv1 = gnn.GraphConv(in_features, 256)
+        self.conv2 = gnn.GraphConv(256, 256)
+        self.conv3 = gnn.GraphConv(256, out_features)
     
-    def forward(self, torch_graph):
-        x, edge_index, edge_weight = torch_graph.node_attr, torch_graph.edge_index, torch_graph.edge_attr
+    def forward(self, g_norm):
+        torch_graph = g_norm.torch_G
+        x, edge_index, edge_weight = torch_graph.node_attr.float(), torch_graph.edge_index, torch_graph.edge_attr.float()
+        x, edge_index, edge_weight = x.to(config.DEVICE), edge_index.to(config.DEVICE), edge_weight.to(config.DEVICE)
         x = self.conv1(x, edge_index, edge_weight=edge_weight)
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index, edge_weight=edge_weight)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
         return self.conv3(x, edge_index, edge_weight=edge_weight)
+    
+    def predict(self, g, norm_in, norm_out):
+        g_norm = norm_in.normalize(g)
+        delta_y_pred = self.forward(g_norm)
+        delta_y_pred = norm_out.invnormalize(delta_y_pred)
+        return g.node_attrs + delta_y_pred.cpu()
+
+if __name__ == '__main__':
+    import dm_control.suite.swimmer as swimmer
+    ds = MujocoDataset(swimmer.swimmer(6), n_runs=1)
+    g, _, _ = ds[0]
+    n_attrs = g.node_attrs.shape[-1]
+    gcn = GCNForwardModel(n_attrs, n_attrs)
+    yp = gcn(g)
+    print(g.node_attrs.shape)
+    print(yp.shape)

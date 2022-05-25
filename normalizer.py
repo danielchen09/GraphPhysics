@@ -24,7 +24,7 @@ class Normalizer:
         self.std = m * self.std + (1 - m) * std
 
 class GraphNormalizer(Normalizer):
-    def __init__(self, momentum=0):
+    def __init__(self, momentum=config.MOMENTUM):
         super(GraphNormalizer, self).__init__(momentum=momentum)
         self.node_normalizer = Normalizer()
         self.edge_normalizer = Normalizer()

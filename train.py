@@ -6,7 +6,7 @@ from tqdm import tqdm
 import dm_control.suite.swimmer as swimmer
 
 import config
-from model import ForwardModel
+from model import ForwardModel, GCNForwardModel
 from dataset import MujocoDataset, SwimmerDataset
 from graphs import Graph
 from render import generate_video, draw, fig2array
@@ -83,10 +83,11 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=Non
             step += 1
             logger.step()
 
-def main():
+def train_swimmer():
     ds = MujocoDataset(swimmer.swimmer(6), n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
     sample_graph, _, _ = ds[0]
-    model = ForwardModel(0, sample_graph.node_attrs.shape[1], sample_graph.edge_attrs.shape[1]).to(config.DEVICE)
+    # model = ForwardModel(0, sample_graph.node_attrs.shape[1], sample_graph.edge_attrs.shape[1]).to(config.DEVICE)
+    model = GCNForwardModel(sample_graph.node_attrs.shape[1], sample_graph.node_attrs.shape[1]).to(config.DEVICE)
     optimizer = Adam(model.parameters(), lr=config.LEARNING_RATE)
     train_loader = DataLoader(ds, batch_size=config.BATCH_SIZE, collate_fn=ds.get_collate_fn())
     def get_loss_fn():
@@ -115,19 +116,3 @@ def test(name='forward_model.mdl'):
     error = evaluate_rollout(model, norm_in, norm_out, save=True, n_links=config.N_LINKS)
     print(error)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='training script')
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--test', dest='train', action='store_false')
-    parser.add_argument('--model', type=str)
-    parser.add_argument('--debug', action='store_true')
-    parser.set_defaults(train=True)
-    args = parser.parse_args()
-    if args.debug:
-        print('debug mode on')
-        config.DEBUG = True
-
-    if args.train:
-        main()
-    else:
-        test(args.model)

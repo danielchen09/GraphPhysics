@@ -8,31 +8,30 @@ from torch import nn
 from dm_control import suite
 import mujoco
 import math
+import argparse
+from train import train_swimmer, test
 
+def main():
+    parser = argparse.ArgumentParser(description='training script')
+    parser.add_argument('--mode', type=str, default='train')
+    parser.add_argument('--model', type=str)
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--device', type=str, default='cpu')
+    args = parser.parse_args()
+    if args.debug:
+        print('debug mode on')
+        config.DEBUG = True
+    if args.device not in ['cpu', 'cuda:0']:
+        print('Invalid device, options: --device=[cpu|cuda:0]')
+        return
+    config.DEVICE = args.device
 
+    if args.mode == 'train':
+        train_swimmer()
+    elif args.mode == 'test':
+        test(args.model)
+    else:
+        print('Invalid mode, options: --mode=[train|test]')
 
-random_state = np.random.RandomState(42)
-env = suite.load('cheetah', 'run', task_kwargs={'random': random_state})
-spec = env.action_spec()
-action = random_state.uniform(spec.minimum, spec.maximum, spec.shape)
-o = env.reset()
-env.step(action)
-names = env.physics.model.names.decode('utf-8')
-body_names = [names[i:names.index('\x00', i)] for i in env.physics.model.name_bodyadr]
-objid = {name: mujoco.mj_name2id(env.physics.model._model, mujoco.mjtObj.mjOBJ_BODY, name) for name in body_names}
-def get_obj_vel(name):
-    res = np.zeros((6, 1))
-    mujoco.mj_objectVelocity(env.physics.model._model, env.physics.data._data, mujoco.mjtObj.mjOBJ_BODY, objid[name], res, 0)
-    return res.reshape(-1)
-print({name: get_obj_vel(name) for name in body_names})
-print({i: env.physics.named.data.xpos[i] for i in body_names})
-print({i: q2e(*env.physics.named.data.xquat[i]) for i in body_names})
-print(env.physics.named.data.ctrl)
-print(env.physics.named.data.qpos)
-breakpoint()
-
-# env = suite.load('cheetah', 'run')
-# g = get_graph(env)
-# print(g.nodes(data=True))
-# print(g.edges(data=True))
-# breakpoint()
+if __name__ == '__main__':
+    main()
