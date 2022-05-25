@@ -28,7 +28,7 @@ def main():
         print('Invalid device, options: --device=[cpu|cuda:0]')
         return
     config.DEVICE = args.device
-    config.LINUX = args.linux.lower in ['yes', 'y', 'true', 't']
+    config.LINUX = args.linux.lower() in ['yes', 'y', 'true', 't']
 
     if args.mode == 'train':
         train_swimmer()
