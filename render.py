@@ -19,10 +19,10 @@ def fig2array(fig):
     return np.array(Image.frombytes("RGBA", (w, h), buf.tobytes()))
 
 def draw_swimmer_from_graph(graph):
-    draw_swimmer(graph.node_attrs)
+    draw(graph.node_attrs)
 
 
-def draw_swimmer(n_links, node_attrs, title=''):
+def draw(n_links, node_attrs, title=''):
     fig = plt.figure()
     for i in range(n_links):
         x = node_attrs[i, 0]
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     ds = SwimmerDataset(n_runs=1, shuffle=False, load_from_path=False)
     frames = []
     for graph, _ in tqdm(ds, desc='generating video'):
-        fig = draw_swimmer(graph)
+        fig = draw(graph)
         buf = fig2array(fig)
         frames.append(buf)
     generate_video(frames)

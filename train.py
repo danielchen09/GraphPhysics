@@ -8,7 +8,7 @@ import config
 from model import ForwardModel
 from dataset import SwimmerDataset
 from graphs import Graph
-from render import generate_video, draw_swimmer, fig2array
+from render import generate_video, draw, fig2array
 from utils import *
 from logger import Logger
 from normalizer import GraphNormalizer, Normalizer
@@ -34,9 +34,9 @@ def evaluate_rollout(model, norm_in, norm_out, n_links=config.N_LINKS):
 def render_rollout(predictions, actuals, save_path='result.mp4', n_links=config.N_LINKS):
     frames = []
     for prediction, actual in tqdm(zip(predictions, actuals), desc='generating video'):
-        fig = draw_swimmer(n_links, prediction, title='predicted')
+        fig = draw(n_links, prediction, title='predicted')
         buf_pred = fig2array(fig)
-        fig = draw_swimmer(n_links, actual, title='actual')
+        fig = draw(n_links, actual, title='actual')
         buf_actual = fig2array(fig)
         frames.append(np.hstack((buf_actual, buf_pred)))
     generate_video(frames, name=save_path)

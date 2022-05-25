@@ -71,7 +71,10 @@ def get_graph(env):
     edges = []
     for c_name in body_names:
         c_id = objids[c_name]
-        p_name = id2name[env.physics.named.model.body_parentid[c_id]]
+        p_id = env.physics.named.model.body_parentid[c_id]
+        if p_id not in id2name:
+            continue
+        p_name = id2name[p_id]
         edges.append([c_name, p_name])
     G = nx.from_edgelist(edges)
     G.remove_edges_from(nx.selfloop_edges(G))

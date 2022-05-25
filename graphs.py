@@ -26,18 +26,21 @@ class Graph:
         self.update(global_attrs, node_attrs, edge_attrs)
 
     def update(self, global_attrs, node_attrs, edge_attrs):
+        if global_attrs is None:
+            global_attrs = self.global_attrs
         if node_attrs is None:
             node_attrs = self.node_attrs
         if edge_attrs is None:
             edge_attrs = self.edge_attrs
-        self.update_attr(node_attrs, edge_attrs)
+        self.update_attr(global_attrs, node_attrs, edge_attrs)
         self.update_stat()
 
-    def update_attr(self, node_attrs, edge_attrs):
+    def update_attr(self, global_attrs, node_attrs, edge_attrs):
+        self.global_attrs = global_attrs
         if torch.is_tensor(node_attrs) or torch.is_tensor(edge_attrs):
             self.node_attrs = node_attrs
             self.edge_attrs = edge_attrs
-            
+
             if torch.is_tensor(node_attrs) and not node_attrs.requires_grad:
                 if node_attrs is not None:
                     for i, node_attr in enumerate(node_attrs):
@@ -46,6 +49,7 @@ class Graph:
                 if edge_attrs is not None:
                     for i, edge_attr in enumerate(edge_attrs):
                         self.G.edges[self.edge_name[i]]['edge_attr'] = np.array(edge_attr)
+            self.torch_G = from_networkx(self.G)
         else:
             self.torch_G = from_networkx(self.G)
             self.node_attrs = self.torch_G.node_attr
@@ -73,7 +77,7 @@ class Graph:
         graph_copy = Graph.from_nx_graph(self.G.copy())
         node_attrs = self.node_attrs.detach().clone() if node_attrs is None else node_attrs
         edge_attrs = self.edge_attrs.detach().clone() if edge_attrs is None else edge_attrs
-        graph_copy.update(None, node_attrs, edge_attrs)
+        graph_copy.update(global_attrs, node_attrs, edge_attrs)
         return graph_copy
 
     @staticmethod

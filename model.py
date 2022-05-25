@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+import torch_geometric.nn as gnn
+import torch.nn.functional as F
 
 from utils import *
 import config
@@ -132,4 +134,20 @@ class RecurrentForwardModel(nn.Module):
         g_concat = Graph.concat(g_norm, g_1)
         return self.gn2(g_concat).node_attrs, g_h
     
+
+class GCNForwardModel(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(GCNForwardModel, self).__init__()
+        self.conv1 = gnn.GCNConv(in_features, 256)
+        self.conv2 = gnn.GCNConv(256, 256)
+        self.conv3 = gnn.GCNConv(256, out_features)
     
+    def forward(self, torch_graph):
+        x, edge_index, edge_weight = torch_graph.node_attr, torch_graph.edge_index, torch_graph.edge_attr
+        x = self.conv1(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index, edge_weight=edge_weight)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        return self.conv3(x, edge_index, edge_weight=edge_weight)
