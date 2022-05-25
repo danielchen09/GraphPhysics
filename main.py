@@ -10,6 +10,8 @@ import mujoco
 import math
 import argparse
 from train import train_swimmer, test
+import matplotlib.pyplot as plt
+
 
 def main():
     parser = argparse.ArgumentParser(description='training script')
@@ -26,7 +28,8 @@ def main():
         print('Invalid device, options: --device=[cpu|cuda:0]')
         return
     config.DEVICE = args.device
-    config.CUSTOM_FFMPEG_PATH = args.linux.lower() in ['yes', 'true', 't']
+    if args.linux.lower in ['yes', 'y', 'true', 't']:
+        plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
     if args.mode == 'train':
         train_swimmer()
