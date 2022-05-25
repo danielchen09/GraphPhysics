@@ -7,8 +7,10 @@ from tqdm import tqdm
 import math
 
 from dataset import SwimmerDataset
+import config
 
-# plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+if config.CUSTOM_FFMPEG_PATH:
+    plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
 def q2e(x, y, z, w):
     t0 = +2.0 * (w * x + y * z)

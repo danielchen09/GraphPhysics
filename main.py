@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--model', type=str)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--linux', type=str, default='f')
     args = parser.parse_args()
     if args.debug:
         print('debug mode on')
@@ -25,6 +26,7 @@ def main():
         print('Invalid device, options: --device=[cpu|cuda:0]')
         return
     config.DEVICE = args.device
+    config.CUSTOM_FFMPEG_PATH = args.linux.lower() in ['yes', 'true', 't']
 
     if args.mode == 'train':
         train_swimmer()
