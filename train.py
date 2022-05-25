@@ -1,5 +1,5 @@
-from numpy import True_
 from torch.optim import Adam
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch import nn
 from tqdm import tqdm
@@ -42,7 +42,7 @@ def render_rollout(predictions, actuals, save_path='result.mp4', n_links=config.
         frames.append(np.hstack((buf_actual, buf_pred)))
     generate_video(frames, name=save_path)
 
-def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=None):
+def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=None, scheduler=None):
     best_error = -1
     date = get_date()
     step = 0
@@ -82,6 +82,8 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=Non
 
             step += 1
             logger.step()
+            if scheduler is not None:
+                scheduler.step()
 
 def train_swimmer():
     ds = MujocoDataset(swimmer.swimmer(6), n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
@@ -105,7 +107,8 @@ def train_swimmer():
         return loss_fn
 
     logger = Logger()
-    train(model, optimizer, train_loader, get_loss_fn(), GraphNormalizer(), Normalizer(), logger=logger)
+    scheduler = StepLR(optimizer, 50000, gamma=config.LR_DECAY)
+    train(model, optimizer, train_loader, get_loss_fn(), GraphNormalizer(), Normalizer(), logger=logger, scheduler=scheduler)
 
 
 def test(name='forward_model.mdl'):

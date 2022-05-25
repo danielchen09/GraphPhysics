@@ -13,7 +13,8 @@ N_RUNS = 5000
 N_STEPS = 100
 NOISE = 1e-2
 MOMENTUM = 0
-CUSTOM_FFMPEG_PATH = True
+CUSTOM_FFMPEG_PATH = False
+LR_DECAY = 0.975
 
 DATASET_PATH = 'datasets/swimmer3_dataset_general.pkl'
 CHECKPOINT_DIR = 'checkpoints'
