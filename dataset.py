@@ -23,7 +23,7 @@ class MujocoDataset(Dataset):
                  noise=0,
                  dataset_path=config.DATASET_PATH,
                  load_from_path=False,
-                 save=True):
+                 save=False):
         self.env = env
         self.env_name = env_name
         self.n_runs = n_runs

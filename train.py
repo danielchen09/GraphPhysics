@@ -3,10 +3,11 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch import nn
 from tqdm import tqdm
+import dm_control.suite.swimmer as swimmer
 
 import config
 from model import ForwardModel
-from dataset import SwimmerDataset
+from dataset import MujocoDataset, SwimmerDataset
 from graphs import Graph
 from render import generate_video, draw, fig2array
 from utils import *
@@ -19,7 +20,7 @@ def evaluate_rollout(model, norm_in, norm_out, n_links=config.N_LINKS):
     predictions = []
     actuals = []
     errors = []
-    run = SwimmerDataset(n_links=n_links, n_runs=1, n_steps=20, shuffle=False, noise=0)
+    run = MujocoDataset(swimmer.swimmer(6), n_runs=1, n_steps=20, shuffle=False, noise=0, save=False)
     with torch.no_grad():
         last_obs = run[0][0].node_attrs
         for graph, y_old, y_new in run:
@@ -67,7 +68,7 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=Non
 
             logger.log_loss('training_loss', loss.item())
 
-            if (step + 1) % config.VAL_INTERVAL == 0:
+            if step % config.VAL_INTERVAL == 0:
                 error, rollout = evaluate_rollout(model, norm_in, norm_out)
                 logger.log_loss('val error', error)
                 if error < best_error or best_error == -1:
@@ -83,21 +84,22 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=Non
             logger.step()
 
 def main():
-    ds = SwimmerDataset(n_links=config.N_LINKS, n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
+    ds = MujocoDataset(swimmer.swimmer(6), n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
     sample_graph, _, _ = ds[0]
     model = ForwardModel(0, sample_graph.node_attrs.shape[1], sample_graph.edge_attrs.shape[1]).to(config.DEVICE)
     optimizer = Adam(model.parameters(), lr=config.LEARNING_RATE)
     train_loader = DataLoader(ds, batch_size=config.BATCH_SIZE, collate_fn=ds.get_collate_fn())
     def get_loss_fn():
+        # 3p4r6v
         mse = nn.MSELoss()
         def angle_loss(y_pred, y):
-            return torch.sin(y_pred.T @ y) ** 2
+            return torch.mean(torch.sin(torch.sum(y_pred * y, dim=-1)) ** 2)
 
         def loss_fn(y_pred, y):
-            y_pred_c = torch.cat([y_pred[:, :2], y_pred[:, 3:]], dim=-1)
-            y_pred_a = y_pred[:, 2:3]
-            y_c = torch.cat([y[:, :2], y[:, 3:]], dim=-1)
-            y_a = y[:, 2:3]
+            y_pred_c = torch.cat([y_pred[:, :3], y_pred[:, 7:]], dim=-1)
+            y_pred_a = y_pred[:, 3:7]
+            y_c = torch.cat([y[:, :3], y[:, 7:]], dim=-1)
+            y_a = y[:, 3:7]
             return mse(y_pred_c, y_c) + angle_loss(y_pred_a, y_a)
         return loss_fn
 

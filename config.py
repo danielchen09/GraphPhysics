@@ -13,7 +13,7 @@ N_RUNS = 5000
 N_STEPS = 100
 NOISE = 1e-2
 
-DATASET_PATH = 'datasets/swimmer3_dataset.pkl'
+DATASET_PATH = 'datasets/swimmer3_dataset_general.pkl'
 CHECKPOINT_DIR = 'checkpoints'
 MODEL_DIR = 'models'
 

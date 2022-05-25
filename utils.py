@@ -78,7 +78,7 @@ def get_graph(env):
         edges.append([c_name, p_name])
     G = nx.from_edgelist(edges)
     G.remove_edges_from(nx.selfloop_edges(G))
-    return G
+    return G.to_directed()
 
 def get_state(env):
     body_names, objids = get_body_name_and_id(env)
@@ -89,9 +89,9 @@ def get_state(env):
     njnt = env.physics.model.njnt
 
     return {
-        'position': {name: env.physics.named.data.xpos[name] for name in body_names},
+        'position': {name: copy.deepcopy(env.physics.named.data.xpos[name]) for name in body_names},
         'velocity': {name: get_obj_vel(env, objids, name) for name in body_names},
-        'rotation': {name: env.physics.named.data.xquat[name] for name in body_names},
+        'rotation': {name: copy.deepcopy(env.physics.named.data.xquat[name]) for name in body_names},
         'joints': {(id2name[joint_body[jid]], id2name[parent[joint_body[jid]]]): joints[jid] for jid in range(3, njnt)}
     }
 
@@ -212,20 +212,3 @@ def load_pickle(filename):
     with open(filename, 'rb') as f:
         return pickle.load(f)
 
-def q2e(x, y, z, w):
-    t0 = +2.0 * (w * x + y * z)
-    t1 = +1.0 - 2.0 * (x * x + y * y)
-    roll_x = math.atan2(t0, t1)
-    
-    t2 = +2.0 * (w * y - z * x)
-    t2 = +1.0 if t2 > +1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch_y = math.asin(t2)
-    
-    t3 = +2.0 * (w * z + x * y)
-    t4 = +1.0 - 2.0 * (y * y + z * z)
-    yaw_z = math.atan2(t3, t4)
-    
-    a = -np.pi - np.array([roll_x, pitch_y, yaw_z]) # in radians
-    a = a[np.where(a % np.pi != 0)]
-    return a[0] if len(a) > 0 else 0

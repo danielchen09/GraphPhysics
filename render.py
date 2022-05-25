@@ -4,10 +4,30 @@ import matplotlib
 from matplotlib import animation
 from PIL import Image
 from tqdm import tqdm
+import math
 
 from dataset import SwimmerDataset
 
-plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+# plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
+
+def q2e(x, y, z, w):
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll_x = math.atan2(t0, t1)
+    
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch_y = math.asin(t2)
+    
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw_z = math.atan2(t3, t4)
+    
+    a = -np.pi - np.array([roll_x, pitch_y, yaw_z]) # in radians
+    a = a[np.where(a % np.pi != 0)]
+    return a[0] if len(a) > 0 else 0
+
 
 def fig2array(fig):
     fig.canvas.draw()
@@ -21,13 +41,12 @@ def fig2array(fig):
 def draw_swimmer_from_graph(graph):
     draw(graph.node_attrs)
 
-
-def draw(n_links, node_attrs, title=''):
+def draw(n_links, node_attrs, title='', x_idx=0, y_idx=1):
     fig = plt.figure()
     for i in range(n_links):
-        x = node_attrs[i, 0]
-        y = node_attrs[i, 1]
-        angle = node_attrs[i, 2]
+        x = node_attrs[i, x_idx]
+        y = node_attrs[i, y_idx]
+        angle = q2e(*node_attrs[i, 3:7].detach().numpy())
         r = 0.05
         dy = np.cos(angle) * r
         dx = - np.sin(angle) * r
