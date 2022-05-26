@@ -116,7 +116,7 @@ def test(name='forward_model.mdl', save_path='test_result.mp4'):
     sample_graph, _, _ = ds[0]
     model = GCNForwardModel(sample_graph.node_attrs.shape[1], sample_graph.node_attrs.shape[1]).to(config.DEVICE)
     norm_in, norm_out = load_checkpoint(f'{config.CHECKPOINT_DIR}/{name}', model, None)
-    error, rollout = evaluate_rollout(model, norm_in, norm_out, save=True, n_links=config.N_LINKS)
+    error, rollout = evaluate_rollout(model, norm_in, norm_out)
     print(error)
     render_rollout(*rollout, save_path=save_path)
 
