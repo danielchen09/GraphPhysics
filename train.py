@@ -15,12 +15,12 @@ from logger import Logger
 from normalizer import GraphNormalizer, Normalizer
 import argparse
 
-def evaluate_rollout(model, norm_in, norm_out, n_links=config.N_LINKS):
+def evaluate_rollout(model, norm_in, norm_out):
     model.eval()
     predictions = []
     actuals = []
     errors = []
-    run = MujocoDataset(swimmer.swimmer(6), n_runs=1, n_steps=20, shuffle=False, noise=0, save=False)
+    run = MujocoDataset(swimmer.swimmer(config.N_LINKS), n_runs=1, n_steps=20, shuffle=False, noise=0, save=False)
     with torch.no_grad():
         last_obs = run[0][0].node_attrs
         for graph, y_old, y_new in run:
@@ -86,7 +86,7 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger=Non
                 scheduler.step()
 
 def train_swimmer():
-    ds = MujocoDataset(swimmer.swimmer(6), n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
+    ds = MujocoDataset(swimmer.swimmer(config.N_LINKS), n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE)
     sample_graph, _, _ = ds[0]
     # model = ForwardModel(0, sample_graph.node_attrs.shape[1], sample_graph.edge_attrs.shape[1]).to(config.DEVICE)
     model = GCNForwardModel(sample_graph.node_attrs.shape[1], sample_graph.node_attrs.shape[1]).to(config.DEVICE)
@@ -103,11 +103,11 @@ def train_swimmer():
             y_pred_a = y_pred[:, 3:7]
             y_c = torch.cat([y[:, :3], y[:, 7:]], dim=-1)
             y_a = y[:, 3:7]
-            return mse(y_pred_c, y_c) + angle_loss(y_pred_a, y_a)
+            return mse(y_pred_c, y_c) + config.ROTATION_LOSS_WEIGHT * angle_loss(y_pred_a, y_a)
         return loss_fn
 
     logger = Logger()
-    scheduler = StepLR(optimizer, 50000, gamma=config.LR_DECAY)
+    scheduler = StepLR(optimizer, config.LR_DECAY_STEP, gamma=config.LR_DECAY)
     train(model, optimizer, train_loader, get_loss_fn(), GraphNormalizer(), Normalizer(), logger=logger, scheduler=scheduler)
 
 
