@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--linux', type=str, default='f')
+    parser.add_argument('--save_path', type=str, default='test_result.mp4')
     args = parser.parse_args()
     if args.debug:
         print('debug mode on')
@@ -33,7 +34,7 @@ def main():
     if args.mode == 'train':
         train_swimmer()
     elif args.mode == 'test':
-        test(args.model)
+        test(args.model, args.save_path)
     else:
         print('Invalid mode, options: --mode=[train|test]')
 

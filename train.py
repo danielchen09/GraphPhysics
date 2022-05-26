@@ -111,11 +111,12 @@ def train_swimmer():
     train(model, optimizer, train_loader, get_loss_fn(), GraphNormalizer(), Normalizer(), logger=logger, scheduler=scheduler)
 
 
-def test(name='forward_model.mdl'):
+def test(name='forward_model.mdl', save_path='test_result.mp4'):
     ds = MujocoDataset(swimmer.swimmer(config.N_LINKS), n_runs=1000, n_steps=100, load_from_path=True, save=True)
     sample_graph, _ = ds[0]
     model = GCNForwardModel(sample_graph.node_attrs.shape[1], sample_graph.node_attrs.shape[1]).to(config.DEVICE)
     norm_in, norm_out = load_checkpoint(f'{config.CHECKPOINT_DIR}/{name}', model, None)
-    error = evaluate_rollout(model, norm_in, norm_out, save=True, n_links=config.N_LINKS)
+    error, rollout = evaluate_rollout(model, norm_in, norm_out, save=True, n_links=config.N_LINKS)
     print(error)
+    render_rollout(*rollout, save_path=save_path)
 
