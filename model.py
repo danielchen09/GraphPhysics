@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch_geometric.nn as gnn
 import torch.nn.functional as F
-from dataset import MujocoDataset, SwimmerDataset
+from dataset import MujocoDataset
 
 from utils import *
 import config
@@ -137,20 +137,35 @@ class RecurrentForwardModel(nn.Module):
     
 
 class GCNForwardModel(nn.Module):
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, hidden_features=config.DM_HIDDEN_FEATURES):
         super(GCNForwardModel, self).__init__()
-        self.conv1 = gnn.GraphConv(in_features, 256)
-        self.conv2 = gnn.GraphConv(256, 256)
-        self.conv3 = gnn.GraphConv(256, out_features)
+        layers = []
+        features = [in_features] + hidden_features + [out_features]
+        for i in range(len(features) - 1):
+            if config.GNN_TYPE == 'graphconv':
+                layers.append(gnn.GraphConv(features[i], features[i + 1]))
+            elif config.GNN_TYPE == 'gatconv':
+                layers.append(gnn.GATConv(features[i] * (config.N_HEADS if i > 0 else 1), features[i + 1], heads=config.N_HEADS if i < len(features) - 2 else 1, edge_dim=1))
+        self.layers = nn.ModuleList(layers)
     
     def forward(self, g_norm):
         torch_graph = g_norm.torch_G
         x, edge_index, edge_weight = torch_graph.node_attr.float(), torch_graph.edge_index, torch_graph.edge_attr.float()
         x, edge_index, edge_weight = x.to(config.DEVICE), edge_index.to(config.DEVICE), edge_weight.to(config.DEVICE)
-        x = self.conv1(x, edge_index, edge_weight=edge_weight)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        return self.conv3(x, edge_index, edge_weight=edge_weight)
+        
+        if config.GNN_TYPE == 'graphconv':
+            kwargs = {'edge_weight': edge_weight}
+        elif config.GNN_TYPE == 'gatconv':
+            kwargs = {'edge_attr': edge_weight}
+
+        for layer in self.layers[:-1]:
+            if config.GNN_TYPE == 'graphconv': # conv
+                x = layer(x, edge_index, **kwargs)
+            elif config.GNN_TYPE == 'gatconv':
+                x = layer(x, edge_index, **kwargs)
+            x = F.relu(x) # relu
+            x = F.dropout(x, training=self.training, p=config.DROPOUT) # dropout
+        return self.layers[-1](x, edge_index, **kwargs)
     
     def predict(self, g, norm_in, norm_out):
         g_norm = norm_in.normalize(g)

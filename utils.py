@@ -15,30 +15,31 @@ import config
 def get_date():
     return datetime.now().strftime("%m%d%H%M%S")
 
-def save_checkpoint(model, optimizer, norm_in, norm_out, name=''):
+def save_checkpoint(model, optimizer, scheduler, logger, norm_in, norm_out, name=None):
     state = {
         'state_dict': model.state_dict(),
         'optimizer': optimizer.state_dict(),
         'norm_in': norm_in,
-        'norm_out': norm_out
+        'norm_out': norm_out,
+        'epoch': logger.epochs,
+        'step': logger.steps,
+        'lr': scheduler.get_last_lr(),
+        'log_dir': logger.log_dir
     }
+    if name is None:
+        name = logger.name + '.ckpt'
     path = f'{config.CHECKPOINT_DIR}/{name}'
-    if name == '':
-        path = f'{config.CHECKPOINT_DIR}/checkpoint_{get_date}.ckpt'
     torch.save(state, path)
 
 
-def load_checkpoint(path, model, optimizer, lr=config.LEARNING_RATE):
+def load_checkpoint(path, model, optimizer=None):
     ckpt = torch.load(path, map_location=config.DEVICE)
     model.load_state_dict(ckpt['state_dict'])
     if optimizer is not None:
         optimizer.load_state_dict(ckpt['optimizer'])
         for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-    return ckpt['norm_in'], ckpt['norm_out']
-
-def get_obs(time_step):
-    return copy.deepcopy(time_step.observation)
+            param_group['lr'] = ckpt['lr']
+    return ckpt
 
 def get_obj_vel(env, objids, name):
     res = np.zeros((6, 1))
@@ -92,31 +93,31 @@ def get_state(env):
         'position': {name: copy.deepcopy(env.physics.named.data.xpos[name]) for name in body_names},
         'velocity': {name: get_obj_vel(env, objids, name) for name in body_names},
         'rotation': {name: copy.deepcopy(env.physics.named.data.xquat[name]) for name in body_names},
-        'joints': {(id2name[joint_body[jid]], id2name[parent[joint_body[jid]]]): joints[jid] for jid in range(3, njnt)}
+        'joints': {(id2name[joint_body[jid]], id2name[parent[joint_body[jid]]]): joints[jid] for jid in range(3, njnt)},
     }
 
-def get_pos(env, n_links):
-    idx = ['head'] + [f'segment_{i}' for i in range(n_links - 1)]
-    pos = []
-    for i in idx:
-        pos += [
-            env.physics.named.data.xpos[i, 'x'], 
-            env.physics.named.data.xpos[i, 'y'],
-            np.arctan2(-env.physics.named.data.xmat[i][1], env.physics.named.data.xmat[i][0])
-        ]
-    return np.array(pos)
+def get_static_state(env):
+    body_names, objids = get_body_name_and_id(env)
+    model = env.physics.named.model
+    return {
+        'mass': {name: copy.deepcopy(model.body_mass[name].reshape(-1, 1)) for name in body_names},
+        'pos': {name: copy.deepcopy(model.body_pos[name]) for name in body_names},
+        'quat': {name: copy.deepcopy(model.body_quat[name]) for name in body_names},
+        'inertia': {name: copy.deepcopy(model.body_intertia[name]) for name in body_names},
+        'ipos': {name: copy.deepcopy(model.body_ipos[name]) for name in body_names},
+        'iquat': {name: copy.deepcopy(model.body_iquat[name]) for name in body_names}
+    }
 
-def add_noise_dict(x, scale=0.1):
-    for k in x.keys():
-        if type(x[k]) is dict:
-            x[k] = add_noise_dict(x[k], scale)
-        else:
-            x[k] = add_noise_np(x[k], scale)
-    return x
-
-def add_noise_np(x, scale=0.1):
+def add_noise(x, scale=0.1):
     noise = np.random.normal(scale=scale, size=x.shape)
     return x + noise
+
+def center_attrs(node_attrs, indicies, mean=None):
+    attr = node_attrs[:, indicies[0]:indicies[1]]
+    if mean is None:
+        mean = attr.mean(dim=0)
+    node_attrs[:, indicies[0]:indicies[1]] -= mean
+    return mean.reshape(1, -1).repeat(node_attrs.shape[0], 1)
 
 def normalize(x, mean, std):
     return (x - mean) / (std + 1e-6)
@@ -139,30 +140,13 @@ def make_nn(features):
             layers.append(nn.ReLU())
     return nn.Sequential(*layers)
 
-def get_dynamic_node_attrs(obs):
-    n_links = len(obs['joints']) + 1
-    node_attrs = []
-    for i in range(n_links):
-        velocities = obs['body_velocities'][i * 3:(i + 1) * 3]
-        positions = obs['pos'][i * 3:(i + 1) * 3]
-        node_attrs.append(np.hstack((positions, velocities)))
-    return torch.tensor(node_attrs)
-
-def get_dynamic_edge_attrs(obs, action):
-    n_links = len(obs['joints']) + 1
-    edge_attrs = []
-    for i in range(n_links - 1):
-        edge_attrs.append(np.array([obs['joints'][i], action[i]]))
-        edge_attrs.append(np.array([obs['joints'][i], action[i]]))
-    return torch.tensor(edge_attrs)
-
-def get_dynamic_node_attrs2(obs, body_names):
+def get_dynamic_node_attrs(obs, body_names):
     node_attrs = []
     for name in body_names:
         node_attrs.append(np.hstack((obs['position'][name], obs['rotation'][name], obs['velocity'][name])))
     return torch.tensor(node_attrs)
 
-def get_dynamic_edge_attrs2(action, edges, edge_order):
+def get_dynamic_edge_attrs(action, edges, edge_order):
     edge_attrs = []
     for edge in edges:
         if edge not in edge_order:
@@ -199,10 +183,6 @@ def get_static_node_attrs(env):
 def get_static_edge_attrs(env):
     model = env.physics.model
     return 
-
-def swimmer_params_from_data(obs, action):
-    n_links = len(obs['joints']) + 1
-    return nx.path_graph(n_links).to_directed(), None, get_dynamic_node_attrs(obs), get_dynamic_edge_attrs(obs, action)
 
 def save_pickle(filename, obj):
     with open(filename, 'wb') as f:

@@ -6,7 +6,6 @@ from PIL import Image
 from tqdm import tqdm
 import math
 
-from dataset import SwimmerDataset
 import config
 
 
@@ -25,8 +24,9 @@ def q2e(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
     
     a = -np.pi - np.array([roll_x, pitch_y, yaw_z]) # in radians
-    a = a[np.where(a % np.pi != 0)]
-    return a[0] if len(a) > 0 else 0
+    # a = a[np.where(a % np.pi != 0)]
+    # return a[0] if len(a) > 0 else 0
+    return a
 
 
 def fig2array(fig):
@@ -41,13 +41,13 @@ def fig2array(fig):
 def draw_swimmer_from_graph(graph):
     draw(graph.node_attrs)
 
-def draw(n_links, node_attrs, title='', x_idx=0, y_idx=1):
+def draw(n_links, node_attrs, title=''):
     fig = plt.figure()
     for i in range(n_links):
-        x = node_attrs[i, x_idx]
-        y = node_attrs[i, y_idx]
-        angle = q2e(*node_attrs[i, 3:7].detach().numpy())
-        r = 0.05
+        x = node_attrs[i, config.DRAW_X_IDX,]
+        y = node_attrs[i, config.DRAW_Y_IDX]
+        angle = q2e(*node_attrs[i, 3:7].detach().numpy())[config.ANGLE_IDX]
+        r = config.BODY_LENGTH
         dy = np.cos(angle) * r
         dx = - np.sin(angle) * r
         plt.plot([x - dx, x + dx], [y - dy, y + dy], 'g', alpha = 0.5)
@@ -60,7 +60,7 @@ def draw(n_links, node_attrs, title='', x_idx=0, y_idx=1):
 def generate_video(frames, name='test.mp4'):
     if config.LINUX:
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
-        
+
     height, width, _ = frames[0].shape
     dpi = 70
     orig_backend = matplotlib.get_backend()
@@ -77,12 +77,3 @@ def generate_video(frames, name='test.mp4'):
     anim = animation.FuncAnimation(fig=fig, func=update, frames=frames,
                                    interval=1000 / 30, blit=True, repeat=False)
     anim.save(name)
-
-if __name__ == '__main__':
-    ds = SwimmerDataset(n_runs=1, shuffle=False, load_from_path=False)
-    frames = []
-    for graph, _ in tqdm(ds, desc='generating video'):
-        fig = draw(graph)
-        buf = fig2array(fig)
-        frames.append(buf)
-    generate_video(frames)

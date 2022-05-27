@@ -1,31 +1,34 @@
+from turtle import update
 from utils import *
 
 class Normalizer:
-    def __init__(self, momentum=0):
-        self.momentum = momentum
+    def __init__(self):
         self.mean = 0
         self.std = 1
+        self.sum = 0
+        self.squared_sum = 0
+        self.count = 0
         self.initialized = False
 
     def normalize(self, x):
+        if self.count == 0:
+            self.update(x)
         return normalize(x, self.mean, self.std)
     
     def invnormalize(self, x):
         return invnormalize(x, self.mean, self.std)
 
     def update(self, x):
-        mean = x.mean(dim=0)
-        std = x.std(dim=0)
-        m = self.momentum
-        if not self.initialized:
-            m = 0
-            self.initialized = True
-        self.mean = m * self.mean + (1 - m) * mean
-        self.std = m * self.std + (1 - m) * std
+        self.sum += x.sum(dim=0)
+        self.count += x.shape[0]
+        self.mean = self.sum / self.count
+
+        self.squared_sum += torch.sum((x - self.mean) ** 2, dim=0)
+        self.std = torch.sqrt(self.squared_sum / self.count)
 
 class GraphNormalizer(Normalizer):
-    def __init__(self, momentum=config.MOMENTUM):
-        super(GraphNormalizer, self).__init__(momentum=momentum)
+    def __init__(self):
+        super(GraphNormalizer, self).__init__()
         self.node_normalizer = Normalizer()
         self.edge_normalizer = Normalizer()
 

@@ -1,5 +1,4 @@
 from model import ForwardModel
-from dataset import SwimmerDataset
 from graphs import Graph
 from utils import *
 from torch.utils.data import DataLoader
@@ -21,15 +20,18 @@ def main():
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--linux', type=str, default='f')
     parser.add_argument('--save_path', type=str, default='test_result.mp4')
+    parser.add_argument('--epochs', type=int, default=config.MAX_EPOCH)
     args = parser.parse_args()
     if args.debug:
-        print('debug mode on')
+        print('\n\ndebug mode on\n\n')
         config.DEBUG = True
     if args.device not in ['cpu', 'cuda:0']:
         print('Invalid device, options: --device=[cpu|cuda:0]')
         return
+        
     config.DEVICE = args.device
     config.LINUX = args.linux.lower() in ['yes', 'y', 'true', 't']
+    config.MAX_EPOCH = args.epochs
 
     if args.mode == 'train':
         train_swimmer()
