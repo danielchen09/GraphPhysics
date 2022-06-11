@@ -4,4 +4,5 @@ models/
 videos/
 checkpoints/
 __pycache__/
+result_old/
 *.mp4

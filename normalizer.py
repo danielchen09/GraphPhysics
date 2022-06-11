@@ -11,6 +11,10 @@ class Normalizer:
         self.initialized = False
 
     def normalize(self, x):
+        if x.is_cuda:
+            self.cuda()
+        else:
+            self.cpu()
         if self.count == 0:
             self.update(x)
         return normalize(x, self.mean, self.std)
@@ -25,6 +29,17 @@ class Normalizer:
 
         self.squared_sum += torch.sum((x - self.mean) ** 2, dim=0)
         self.std = torch.sqrt(self.squared_sum / self.count)
+    
+    def to(self, device):
+        self.mean = self.mean.to(device)
+        self.std = self.std.to(device)
+        return self
+
+    def cpu(self):
+        return self.to('cpu')
+    
+    def cuda(self):
+        return self.to('cuda:0')
 
 class GraphNormalizer(Normalizer):
     def __init__(self):
@@ -32,8 +47,9 @@ class GraphNormalizer(Normalizer):
         self.node_normalizer = Normalizer()
         self.edge_normalizer = Normalizer()
 
-    def normalize(self, graph):
-        graph = graph.copy()
+    def normalize(self, graph, copy=True):
+        if copy:
+            graph = graph.copy()
         node_norm = self.node_normalizer.normalize(graph.node_attrs)
         edge_norm = self.edge_normalizer.normalize(graph.edge_attrs)
         graph.update(None, node_norm, edge_norm)
@@ -42,6 +58,11 @@ class GraphNormalizer(Normalizer):
     def update(self, graph):
         self.node_normalizer.update(graph.node_attrs)
         self.edge_normalizer.update(graph.edge_attrs)
+
+    def to(self, device):
+        self.node_normalizer.to(device)
+        self.edge_normalizer.to(device)
+        return self
 
 if __name__ == '__main__':
     from graphs import SwimmerGraph

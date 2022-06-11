@@ -12,7 +12,7 @@ class Logger:
         tb = program.TensorBoard()
         tb.configure(argv=[None, '--logdir', self.log_dir, '--reload_interval', '1', '--port', f'{port}'])
         self.url = tb.launch()
-        print(f"Tensorflow listening on {self.url}")
+        print(f"Tensorflow listening on {self.url} log_dir: {self.log_dir}")
         self.steps = steps
         self.epochs = 0
 

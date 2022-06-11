@@ -41,17 +41,19 @@ class Graph:
             self.node_attrs = node_attrs
             self.edge_attrs = edge_attrs
 
-            if torch.is_tensor(node_attrs) and not node_attrs.requires_grad:
+            if torch.is_tensor(node_attrs):
                 if node_attrs is not None:
                     for i, node_attr in enumerate(node_attrs):
-                        self.G.nodes[self.node_name[i]]['node_attr'] = np.array(node_attr)
-            if torch.is_tensor(edge_attrs) and not edge_attrs.requires_grad:
+                        self.G.nodes[self.node_name[i]]['node_attr'] = node_attrs[i]
+            if torch.is_tensor(edge_attrs):
                 if edge_attrs is not None:
                     for i, edge_attr in enumerate(edge_attrs):
-                        self.G.edges[self.edge_name[i]]['edge_attr'] = np.array(edge_attr)
+                        self.G.edges[self.edge_name[i]]['edge_attr'] = edge_attrs[i]
             self.torch_G = from_networkx(self.G)
+            self.torch_G.node_attr = torch.stack(self.torch_G.node_attr)
         else:
             self.torch_G = from_networkx(self.G)
+            self.torch_G.node_attr = torch.stack(self.torch_G.node_attr)
             self.node_attrs = self.torch_G.node_attr
             self.edge_attrs = self.torch_G.edge_attr
 
@@ -68,15 +70,16 @@ class Graph:
 
     def to(self, device):
         if self.node_attrs is not None:
-            self.node_attrs.to(device)
+            self.node_attrs = self.node_attrs.to(device)
         if self.edge_attrs is not None:
-            self.edge_attrs.to(device)
+            self.edge_attrs = self.edge_attrs.to(device)
+        # self.update(self.global_attrs, self.node_attrs, self.edge_attrs)
         return self
 
     def copy(self, global_attrs=None, node_attrs=None, edge_attrs=None):
         graph_copy = Graph.from_nx_graph(self.G.copy())
-        node_attrs = self.node_attrs.detach().clone() if node_attrs is None else node_attrs
-        edge_attrs = self.edge_attrs.detach().clone() if edge_attrs is None else edge_attrs
+        node_attrs = self.node_attrs.clone().detach() if node_attrs is None else node_attrs
+        edge_attrs = self.edge_attrs.clone().detach() if edge_attrs is None else edge_attrs
         graph_copy.update(global_attrs, node_attrs, edge_attrs)
         return graph_copy
 
@@ -88,9 +91,11 @@ class Graph:
     def concat(sg1, sg2):
         node_attrs = torch.cat([sg1.node_attrs, sg2.node_attrs], dim=-1)
         edge_attrs = torch.cat([sg1.edge_attrs, sg2.edge_attrs], dim=-1)
-        concat_graph = Graph.from_nx_graph(sg1.G)
-        concat_graph.update(None, node_attrs, edge_attrs)
+        concat_graph = Graph(sg1.G, None, node_attrs, edge_attrs)
         return concat_graph
+
+    def concat_node(self, node_attrs):
+        self.update(None, torch.cat([self.node_attrs, node_attrs], dim=-1), self.edge_attrs)
 
     @staticmethod
     def union(sg1, sg2):

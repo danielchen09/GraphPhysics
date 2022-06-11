@@ -142,36 +142,30 @@ class GCNForwardModel(nn.Module):
         layers = []
         features = [in_features] + hidden_features + [out_features]
         for i in range(len(features) - 1):
-            if config.GNN_TYPE == 'graphconv':
-                layers.append(gnn.GraphConv(features[i], features[i + 1]))
-            elif config.GNN_TYPE == 'gatconv':
-                layers.append(gnn.GATConv(features[i] * (config.N_HEADS if i > 0 else 1), features[i + 1], heads=config.N_HEADS if i < len(features) - 2 else 1, edge_dim=1))
+            layers.append(gnn.GraphConv(features[i], features[i + 1]))
         self.layers = nn.ModuleList(layers)
     
     def forward(self, g_norm):
         torch_graph = g_norm.torch_G
-        x, edge_index, edge_weight = torch_graph.node_attr.float(), torch_graph.edge_index, torch_graph.edge_attr.float()
+        x, edge_index, edge_weight = g_norm.node_attrs.float(), torch_graph.edge_index, g_norm.edge_attrs.float()
         x, edge_index, edge_weight = x.to(config.DEVICE), edge_index.to(config.DEVICE), edge_weight.to(config.DEVICE)
-        
-        if config.GNN_TYPE == 'graphconv':
-            kwargs = {'edge_weight': edge_weight}
-        elif config.GNN_TYPE == 'gatconv':
-            kwargs = {'edge_attr': edge_weight}
 
         for layer in self.layers[:-1]:
-            if config.GNN_TYPE == 'graphconv': # conv
-                x = layer(x, edge_index, **kwargs)
-            elif config.GNN_TYPE == 'gatconv':
-                x = layer(x, edge_index, **kwargs)
+            x = layer(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x) # relu
             x = F.dropout(x, training=self.training, p=config.DROPOUT) # dropout
-        return self.layers[-1](x, edge_index, **kwargs)
+        return self.layers[-1](x, edge_index, edge_weight=edge_weight)
     
-    def predict(self, g, norm_in, norm_out):
-        g_norm = norm_in.normalize(g)
+    def predict(self, g, norm_in, norm_out, copy=True, static_node_attrs=None):
+        g_norm = norm_in.normalize(g, copy=copy)
+        if config.USE_STATIC_ATTRS:
+            g_norm.concat_node(static_node_attrs)
         delta_y_pred = self.forward(g_norm)
         delta_y_pred = norm_out.invnormalize(delta_y_pred)
-        return g.node_attrs + delta_y_pred.cpu()
+        original = g.node_attrs
+        if not copy:
+            original = norm_in.node_normalizer.invnormalize(g.node_attrs)
+        return original + delta_y_pred.cpu()
 
 if __name__ == '__main__':
     import dm_control.suite.swimmer as swimmer
