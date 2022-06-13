@@ -107,7 +107,7 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger, sc
             scheduler.step()
         logger.step_epoch()
 
-def train_swimmer(checkpoint=None):
+def run_train(checkpoint=None):
     ds = MujocoDataset(WalkerEnvCreator(), dataset_path=config.DATASET_PATH, n_runs=config.N_RUNS, n_steps=config.N_STEPS, load_from_path=True, save=True, noise=config.NOISE, shuffle=True)
     sample_graph, _, _, info = ds[0]
     in_shape = sample_graph.node_attrs.shape[1]

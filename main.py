@@ -8,7 +8,7 @@ from dm_control import suite
 import mujoco
 import math
 import argparse
-from train import train_swimmer, test
+from train import run_train, test
 import matplotlib.pyplot as plt
 
 
@@ -42,7 +42,7 @@ def main():
         checkpoint = args.checkpoint if args.checkpoint != '' else None
         if checkpoint == 'latest':
             checkpoint = load_latest_checkpoint()
-        train_swimmer(checkpoint)
+        run_train(checkpoint)
     elif args.mode == 'test':
         test(args.model, args.save_path, env=args.env)
     else:

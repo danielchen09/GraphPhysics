@@ -144,13 +144,13 @@ class GCNForwardModel(nn.Module):
         for i in range(len(features) - 1):
             layers.append(gnn.GraphConv(features[i], features[i + 1]))
         self.layers = nn.ModuleList(layers)
-    
+
     def forward(self, g_norm):
         torch_graph = g_norm.torch_G
         x, edge_index, edge_weight = g_norm.node_attrs.float(), torch_graph.edge_index, g_norm.edge_attrs.float()
         x, edge_index, edge_weight = x.to(config.DEVICE), edge_index.to(config.DEVICE), edge_weight.to(config.DEVICE)
 
-        for layer in self.layers[:-1]:
+        for i, layer in enumerate(self.layers[:-1]):
             x = layer(x, edge_index, edge_weight=edge_weight)
             x = F.relu(x) # relu
             x = F.dropout(x, training=self.training, p=config.DROPOUT) # dropout

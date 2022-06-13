@@ -74,7 +74,6 @@ def get_obj_vel(env, objids, name):
 def get_body_name_and_id(env):
     names = env.physics.model.names.decode('utf-8')
     body_names = [names[i:names.index('\x00', i)] for i in env.physics.model.name_bodyadr]
-    body_names.remove('world')
     objids = {name: mujoco.mj_name2id(env.physics.model._model, mujoco.mjtObj.mjOBJ_BODY, name) for name in body_names}
     return body_names, objids
 
@@ -100,19 +99,27 @@ def get_geom_sizes(env, geom_names):
 def get_graph(env, geom_names):
     body_names, objids = get_body_name_and_id(env)
     id2name = {v: k for k, v in objids.items()}
+    # breakpoint()
     geom2body = {name: id2name[env.physics.named.model.geom_bodyid[name]] for name in geom_names}
     body2geom = {v: k for k, v in geom2body.items()}
     edges = []
     for g_name in geom_names:
+        if g_name in ['ground', 'floor']:
+            continue
         c_name = geom2body[g_name]
         c_id = objids[c_name]
         p_id = env.physics.named.model.body_parentid[c_id]
-        if p_id not in id2name:
+        if p_id not in id2name or p_id == 0:
             continue
         p_name = id2name[p_id]
         edges.append([g_name, body2geom[p_name]])
     G = nx.from_edgelist(edges)
     G.remove_edges_from(nx.selfloop_edges(G))
+    G.add_node('ground')
+    for node in G.nodes:
+        if node == 'ground':
+            continue
+        G.add_edge('ground', node)
     return G.to_directed()
 
 def get_state(env, geom_names):
@@ -124,6 +131,49 @@ def get_state(env, geom_names):
         'rotation': {name: copy.deepcopy(m2q(env.physics.named.data.geom_xmat[name])) for name in geom_names},
         'size': {name: copy.deepcopy(env.physics.named.model.geom_size[name]) for name in geom_names}
     }
+
+def get_node_attrs(state, geom_names, attr_names):
+    node_attrs = []
+    for name in geom_names:
+        row = []
+        for attr_name in attr_names:
+            row.append(state[attr_name][name])
+        node_attrs.append(np.hstack(row))
+    return torch.tensor(node_attrs)
+
+def get_dynamic_node_attrs(obs, geom_names):
+    return get_node_attrs(obs, geom_names, ['position', 'rotation', 'velocity'])
+
+def get_dynamic_edge_attrs(action, edges, edge_order):
+    edge_attrs = []
+    for edge in edges:
+        if edge in edge_order:
+            edge_attrs.append(np.array([action[edge_order[edge]]]))
+        else:
+            edge_attrs.append(np.array([0]))
+    return torch.tensor(edge_attrs)
+
+def get_static_state(env, geom_names):
+    model = env.physics.named.model
+    body_names, objids = get_body_name_and_id(env)
+    id2name = {v: k for k, v in objids.items()}
+    geom2body = {name: id2name[env.physics.named.model.geom_bodyid[name]] for name in geom_names}
+    return {
+        'mass': {name: copy.deepcopy(model.body_mass[geom2body[name]].reshape(-1)) for name in geom_names},
+        'size': {name: copy.deepcopy(model.geom_size[name]) for name in geom_names},
+        'type': {name: one_hot(model.geom_type[name], 8).reshape(-1) for name in geom_names},
+        'body_pos': {name: copy.deepcopy(model.body_pos[geom2body[name]]) for name in geom_names},
+        'body_quat': {name: copy.deepcopy(model.body_quat[geom2body[name]]) for name in geom_names},
+        'geom_pos': {name: copy.deepcopy(model.geom_pos[name]) for name in geom_names},
+        'geom_quat': {name: copy.deepcopy(model.geom_quat[name]) for name in geom_names},
+        'ipos': {name: copy.deepcopy(model.body_ipos[geom2body[name]]) for name in geom_names},
+        'iquat': {name: copy.deepcopy(model.body_iquat[geom2body[name]]) for name in geom_names}
+    }
+
+def get_static_node_attrs(env, geom_names):
+    attr_names = ['mass', 'size', 'type', 'body_pos', 'body_quat', 'geom_pos', 'geom_quat', 'ipos', 'iquat']
+    state = get_static_state(env, geom_names)
+    return get_node_attrs(state, geom_names, attr_names)
 
 def add_noise(x, scale=0.1):
     noise = np.random.normal(scale=scale, size=x.shape)
@@ -162,52 +212,6 @@ def make_nn(features, last_act=None):
     if last_act is not None:
         layers.apend(last_act())
     return nn.Sequential(*layers)
-
-def get_node_attrs(state, geom_names, attr_names):
-    node_attrs = []
-    for name in geom_names:
-        row = []
-        for attr_name in attr_names:
-            row.append(state[attr_name][name])
-        node_attrs.append(np.hstack(row))
-    return torch.tensor(node_attrs)
-
-def get_dynamic_node_attrs(obs, geom_names):
-    return get_node_attrs(obs, geom_names, ['position', 'rotation', 'velocity'])
-
-def get_dynamic_edge_attrs(action, edges, edge_order):
-    edge_attrs = []
-    for edge in edges:
-        if edge not in edge_order:
-            continue
-        edge_attrs.append(np.array([action[edge_order[edge]]]))
-    return torch.tensor(edge_attrs)
-
-def get_static_state(env, geom_names):
-    model = env.physics.named.model
-    body_names, objids = get_body_name_and_id(env)
-    id2name = {v: k for k, v in objids.items()}
-    geom2body = {name: id2name[env.physics.named.model.geom_bodyid[name]] for name in geom_names}
-    return {
-        'mass': {name: copy.deepcopy(model.body_mass[geom2body[name]].reshape(-1)) for name in geom_names},
-        'size': {name: copy.deepcopy(model.geom_size[name]) for name in geom_names},
-        'type': {name: one_hot(model.geom_type[name], 8).reshape(-1) for name in geom_names},
-        'body_pos': {name: copy.deepcopy(model.body_pos[geom2body[name]]) for name in geom_names},
-        'body_quat': {name: copy.deepcopy(model.body_quat[geom2body[name]]) for name in geom_names},
-        'geom_pos': {name: copy.deepcopy(model.geom_pos[name]) for name in geom_names},
-        'geom_quat': {name: copy.deepcopy(model.geom_quat[name]) for name in geom_names},
-        'ipos': {name: copy.deepcopy(model.body_ipos[geom2body[name]]) for name in geom_names},
-        'iquat': {name: copy.deepcopy(model.body_iquat[geom2body[name]]) for name in geom_names}
-    }
-
-def get_static_node_attrs(env, geom_names):
-    attr_names = ['mass', 'size', 'type', 'body_pos', 'body_quat', 'geom_pos', 'geom_quat', 'ipos', 'iquat']
-    state = get_static_state(env, geom_names)
-    return get_node_attrs(state, geom_names, attr_names)
-
-def get_static_edge_attrs(env):
-    model = env.physics.model
-    return 
 
 def save_pickle(filename, obj):
     with open(filename, 'wb') as f:

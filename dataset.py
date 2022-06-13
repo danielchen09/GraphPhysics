@@ -155,14 +155,16 @@ class MujocoDataset(Dataset):
 def test():
     from render import Renderer, generate_video
     from env import CompositeEnvCreator
+    import matplotlib.pyplot as plt
+    from env import SwimmerEnvCreator, CheetahEnvCreator, WalkerEnvCreator
     renderer = Renderer()
-    ds = MujocoDataset(CompositeEnvCreator(env_args={'swimmer': {'n_links':6}}), n_runs=1, n_steps=20)
-    frames = []
-    for g_old, n_old, n_new, info in ds:
-        center_attrs(n_old, (0, 3), -info['center'])
-        frames.append(renderer.render(n_old, ds.env_creator, info['env_key']))
-    
-    generate_video(frames)
+    ds = MujocoDataset(WalkerEnvCreator(), n_runs=1, n_steps=1)
+    G = ds[0][0].G
+    pos = nx.spring_layout(G)
+    nx.draw_networkx(G, pos)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels={(e[0], e[1]): f"{e[2]['edge_attr'].item():.2f}" for e in G.edges(data=True)})
+    plt.show()
 
+    
 if __name__ == '__main__':
     test()

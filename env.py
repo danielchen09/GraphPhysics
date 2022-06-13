@@ -60,7 +60,7 @@ class SwimmerEnvCreator(EnvCreator):
         geom_names = {}
         camera_config = {}
         for key in keys:
-            geom_names[key] = ['visual'] + [f'visual_{i}' for i in range(key - 1)]
+            geom_names[key] = ['visual'] + [f'visual_{i}' for i in range(key - 1)] + ['ground']
             camera_config[key] = [1, 90, -90]
         super(SwimmerEnvCreator, self).__init__(keys, geom_names, camera_config)
 
@@ -76,7 +76,8 @@ class CheetahEnvCreator(EnvCreator):
             'bfoot', 
             'fthigh', 
             'fshin', 
-            'ffoot'
+            'ffoot',
+            'ground'
         ]
         super(CheetahEnvCreator, self).__init__([0], {0: geom_names})
 
@@ -92,7 +93,8 @@ class WalkerEnvCreator(EnvCreator):
             'right_foot', 
             'left_thigh', 
             'left_leg', 
-            'left_foot'
+            'left_foot',
+            'floor'
         ]
         super(WalkerEnvCreator, self).__init__([0], {0: geom_names})
     

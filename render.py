@@ -7,6 +7,8 @@ from tqdm import tqdm
 import math
 from dm_control import mjcf
 from dm_control import mujoco
+import torch
+import copy
 
 import config
 
@@ -35,11 +37,17 @@ class Renderer:
         self.init = False
 
     def render(self, node_attrs, env_creator, env_key):
-        geom_names = env_creator.geom_names[env_key]
+        # breakpoint()
+        geom_names = copy.deepcopy(env_creator.geom_names[env_key])
+        ground_idx = geom_names.index(next(gn for gn in geom_names if gn in ['ground', 'floor']))
+        node_attrs = torch.cat([node_attrs[:ground_idx], node_attrs[ground_idx+1:]], dim=0)
+        geom_names.pop(ground_idx)
         sizes = env_creator.sizes[env_key]
         camera_config = env_creator.camera_configs[env_key]
 
         for i in range(len(geom_names)):
+            if geom_names[i] in ['ground', 'floor']:
+                continue
             pos = node_attrs[i, 0:3]
             quat = node_attrs[i, 3:7]
             size = sizes[i]
