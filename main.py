@@ -1,4 +1,3 @@
-from model import ForwardModel
 from graphs import Graph
 from utils import *
 from torch.utils.data import DataLoader

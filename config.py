@@ -4,7 +4,6 @@ import dm_control.suite.swimmer as swimmer
 from dm_control import suite
 import random
 
-from env import EnvCreator, SwimmerEnvCreator
 
 # files & general setting
 SEED = 42
@@ -40,9 +39,6 @@ USE_STATIC_ATTRS = True
 USE_NORMALIZATION = True
 
 DEBUG = False
-
-def GET_ENVIRONMENT():
-    return SwimmerEnvCreator()
 
 # MPC
 MPC_LR = 1e-2

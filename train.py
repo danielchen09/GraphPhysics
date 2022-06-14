@@ -8,7 +8,7 @@ import glob
 import os
 
 import config
-from model import ForwardModel, GCNForwardModel
+from model import GCNForwardModel
 from dataset import MujocoDataset
 from graphs import Graph
 from env import CheetahEnvCreator, CompositeEnvCreator, SwimmerEnvCreator, WalkerEnvCreator
