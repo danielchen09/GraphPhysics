@@ -3,8 +3,16 @@ import torch
 import networkx as nx
 import numpy as np
 from torch_geometric.utils.convert import from_networkx
+from torch_geometric.data import Data
 
 from utils import *
+
+class GraphData(Data):
+    def __init__(self, G, global_attrs, node_attrs, edge_attrs):
+        # breakpoint()
+        torch_G = from_networkx(G)
+        super(GraphData, self).__init__(node_attrs, torch_G.edge_index, edge_attrs)
+        self.global_attrs = global_attrs
 
 
 class Graph:

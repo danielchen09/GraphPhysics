@@ -67,7 +67,7 @@ def train(model, optimizer, train_loader, loss_fn, norm_in, norm_out, logger, sc
 
     renderer = Renderer()
     for epoch in range(config.MAX_EPOCH):
-        for x, y_old, y_new, center, static_node_attrs in tqdm(train_loader, desc=f'epoch {epoch}/{config.MAX_EPOCH}'):
+        for x, y_old, y_new, info in tqdm(train_loader, desc=f'epoch {epoch}/{config.MAX_EPOCH}'):
             model.train()
             graph_old = x[0].to(config.DEVICE)
             y = y_new - y_old

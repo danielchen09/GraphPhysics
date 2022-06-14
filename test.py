@@ -20,22 +20,37 @@ from env import *
 from dataset import MujocoDataset
 
 class TestData(Data):
-    def __init__(self):
-        G = nx.path_graph(5).to_directed()
+    def __init__(self, G):
+        print(G is None)
         g = from_networkx(G)
         super(TestData, self).__init__(torch.randn(5, 13), g.edge_index, torch.randn(8, 7))
+        self.z = torch.randn(1)
+        self.G = G
+
+    def update(self):
+        self.x = torch.randn(5, 13)
 
 class TestDataset(Dataset):
     def __init__(self):
         super(TestDataset, self).__init__()
     
     def __getitem__(self, idx):
-        return TestData(), torch.tensor([5, 5])
+        G = nx.path_graph(5).to_directed()
+        return TestData(G), torch.tensor([5, 5])
 
     def __len__(self):
         return 2
 
-ds = TestDataset()
+# ds = TestDataset()
+# dl = DataLoader(ds, batch_size=2)
+# it = iter(dl)
+# breakpoint()
+# d = next(it)
+# print(d)
+
+ds = MujocoDataset(CompositeEnvCreator(), n_runs=1, n_steps=20)
+for x in ds:
+    print(x[0] is None)
 dl = DataLoader(ds, batch_size=2)
 for x in dl:
     print(x)

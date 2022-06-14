@@ -2,7 +2,8 @@ from email.mime import base
 from re import L
 from tkinter.ttk import setup_master
 import torch
-from torch.utils.data import Dataset
+from torch_geometric.data import Dataset, Data
+from torch_geometric.utils.convert import from_networkx
 import numpy as np
 import dm_control
 import dm_control.suite.swimmer as swimmer
@@ -12,7 +13,7 @@ from tqdm import tqdm
 
 import config
 from utils import *
-from graphs import Graph
+from graphs import Graph, GraphData
 
 
 class MujocoDataset(Dataset):
@@ -123,11 +124,10 @@ class MujocoDataset(Dataset):
         center = center_attrs(node_attrs_old, (0, 3))
         center_attrs(node_attrs_new, (0, 3), center)
         node_attrs_old = add_noise(node_attrs_old, self.noise)
-        graph_old = Graph.from_nx_graph(
-                        base_graph.copy(), 
-                        None, 
-                        node_attrs_old, 
-                        get_dynamic_edge_attrs(action, base_graph.edges, edge_order)
+        graph_old = Data(
+                        node_attrs_old,
+                        from_networkx(base_graph).edge_index,
+                        edge_attrs=get_dynamic_edge_attrs(action, base_graph.edges, edge_order)
                     )
         info = {
             'center': center,
@@ -136,21 +136,21 @@ class MujocoDataset(Dataset):
         }
         return graph_old, node_attrs_old, node_attrs_new, info
 
-    def get_collate_fn(self, concat=True):
-        def collate_fn(inp):
-            if concat:
-                x = Graph.empty()
-                for graph, _, _, _ in inp:
-                    x = Graph.union(x, graph)
-                x = [x]
-            else:
-                x = [graph for graph, _, _, _ in inp]
-            y_old = torch.cat([y for _, y, _, _ in inp], dim=0)
-            y_new = torch.cat([y for _, _, y, _ in inp], dim=0)
-            center = torch.cat([info['center'] for _, _, _, info in inp], dim=0)
-            static_node_attrs = torch.cat([info['static_node_attrs'] for _, _, _, info in inp], dim=0)
-            return x, y_old, y_new, center, static_node_attrs
-        return collate_fn
+    # def get_collate_fn(self, concat=True):
+    #     def collate_fn(inp):
+    #         if concat:
+    #             x = Graph.empty()
+    #             for graph, _, _, _ in inp:
+    #                 x = Graph.union(x, graph)
+    #             x = [x]
+    #         else:
+    #             x = [graph for graph, _, _, _ in inp]
+    #         y_old = torch.cat([y for _, y, _, _ in inp], dim=0)
+    #         y_new = torch.cat([y for _, _, y, _ in inp], dim=0)
+    #         center = torch.cat([info['center'] for _, _, _, info in inp], dim=0)
+    #         static_node_attrs = torch.cat([info['static_node_attrs'] for _, _, _, info in inp], dim=0)
+    #         return x, y_old, y_new, center, static_node_attrs
+    #     return collate_fn
 
 def test():
     from render import Renderer, generate_video
