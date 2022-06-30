@@ -12,6 +12,8 @@ import os
 
 import config
 
+import matplotlib.pyplot as plt
+
 def get_date():
     return datetime.now().strftime("%m%d%H%M%S")
 
@@ -30,8 +32,7 @@ def save_checkpoint(model, optimizer, scheduler, logger, norm_in, norm_out, name
         'norm_out': norm_out.cpu(),
         'epoch': logger.epochs,
         'step': logger.steps,
-        'lr': scheduler.get_last_lr()[0],
-        'log_dir': logger.log_dir
+        'lr': scheduler.get_last_lr()[0]
     }
     if name is None:
         name = logger.name + '.ckpt'
@@ -73,7 +74,7 @@ def get_body_name_and_id(env):
     objids = {name: mujoco.mj_name2id(env.physics.model._model, mujoco.mjtObj.mjOBJ_BODY, name) for name in body_names}
     return body_names, objids
 
-def get_edge_order(env, geom_names):  
+def get_edge_order(env, geom_names, include_fn, use_root=True):  
     body_names, name2id = get_body_name_and_id(env) 
     id2name = {v: k for k, v in name2id.items()}
     body2geom = {id2name[env.physics.named.model.geom_bodyid[name]]: name for name in geom_names}
@@ -82,11 +83,17 @@ def get_edge_order(env, geom_names):
     joint_body = env.physics.named.model.jnt_bodyid
     njnt = env.physics.model.njnt
     edge_order = {}
-    for order, i in enumerate(range(3 if njnt > 3 else 0, njnt)):
-        u = body2geom[id2name[joint_body[i]]]
-        v = body2geom[id2name[parent[joint_body[i]]]]
+    order = 0
+    for i in range(3 if use_root else 0, njnt):
+        c_name = id2name[joint_body[i]]
+        u = body2geom[c_name]
+        p_name = id2name[parent[joint_body[i]]]
+        if not include_fn(c_name, p_name) or not include_fn(p_name, c_name):
+            continue
+        v = body2geom[p_name]
         edge_order[u, v] = order
         edge_order[v, u] = order
+        order += 1
     return edge_order
 
 def get_geom_sizes(env, geom_names):
@@ -100,22 +107,24 @@ def get_graph(env, geom_names):
     body2geom = {v: k for k, v in geom2body.items()}
     edges = []
     for g_name in geom_names:
-        if g_name in ['ground', 'floor']:
-            continue
         c_name = geom2body[g_name]
         c_id = objids[c_name]
+        if c_id == 0:
+            continue
         p_id = env.physics.named.model.body_parentid[c_id]
-        if p_id not in id2name or p_id == 0:
+        if p_id not in id2name:
             continue
         p_name = id2name[p_id]
         edges.append([g_name, body2geom[p_name]])
     G = nx.from_edgelist(edges)
     G.remove_edges_from(nx.selfloop_edges(G))
-    G.add_node('ground')
-    for node in G.nodes:
-        if node == 'ground':
-            continue
-        G.add_edge('ground', node)
+
+
+    # G.add_node('ground')
+    # for node in G.nodes:
+    #     if node == 'ground':
+    #         continue
+    #     G.add_edge('ground', node)
     return G.to_directed()
 
 def get_state(env, geom_names):
@@ -138,16 +147,31 @@ def get_node_attrs(state, geom_names, attr_names):
     return torch.tensor(node_attrs)
 
 def get_dynamic_node_attrs(obs, geom_names):
+    ground_name = 'floor' if 'floor' in obs['position'] else 'ground'
+    obs['position'][ground_name][:3] = 0 # reset ground pos
     return get_node_attrs(obs, geom_names, ['position', 'rotation', 'velocity'])
 
-def get_dynamic_edge_attrs(action, edges, edge_order):
+def get_edge_attrs(data, edges, edge_order, default):
     edge_attrs = []
     for edge in edges:
         if edge in edge_order:
-            edge_attrs.append(np.array([action[edge_order[edge]]]))
+            edge_attrs.append(data[edge_order[edge]])
         else:
-            edge_attrs.append(np.array([0]))
+            edge_attrs.append(default)
     return torch.tensor(edge_attrs)
+
+def get_dynamic_edge_attrs(action, edges, edge_order):
+    action = action[:, None]
+    return get_edge_attrs(action, edges, edge_order, np.array([0]))
+
+def get_static_edge_attrs(env, edges, edge_order, use_root=True):
+    start_idx = 3 if use_root else 0
+    data = np.hstack([
+        env.physics.model.jnt_range[start_idx:, :], # 2
+        env.physics.model.jnt_limited[start_idx:, None], # 1
+        one_hot(env.physics.model.jnt_type[start_idx:], 4) # 1
+    ])
+    return get_edge_attrs(data, edges, edge_order, np.zeros(data.shape[-1]))
 
 def get_static_state(env, geom_names):
     model = env.physics.named.model
@@ -171,6 +195,21 @@ def get_static_node_attrs(env, geom_names):
     state = get_static_state(env, geom_names)
     return get_node_attrs(state, geom_names, attr_names)
 
+def get_static_global_attrs(env):
+    opt = env.physics.model.opt
+    return torch.tensor([[
+        opt.timestep,
+        *opt.gravity,
+        *opt.wind,
+        *opt.magnetic,
+        opt.density,
+        opt.viscosity,
+        opt.impratio,
+        opt.o_margin,
+        *opt.o_solref,
+        *opt.o_solimp
+    ]])
+
 def add_noise(x, scale=0.1):
     noise = np.random.normal(scale=scale, size=x.shape)
     return x + noise
@@ -180,7 +219,7 @@ def center_attrs(node_attrs, indicies=(0, 3), mean=None):
     if mean is None:
         mean = attr.mean(dim=0)
     node_attrs[:, indicies[0]:indicies[1]] -= mean
-    return mean.reshape(1, -1).repeat(node_attrs.shape[0], 1)
+    return mean
 
 def normalize(x, mean, std):
     if config.USE_NORMALIZATION:

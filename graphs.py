@@ -3,9 +3,57 @@ import torch
 import networkx as nx
 import numpy as np
 from torch_geometric.utils.convert import from_networkx
+from torch_geometric.data import Data
 
 from utils import *
 
+class GraphData(Data):
+    def __init__(self, edge_index, global_attrs, node_attrs, edge_attrs=None, batch=None):
+        super(GraphData, self).__init__(node_attrs, edge_index, edge_attrs, global_attrs=global_attrs)
+
+    def concat_node(self, node_attrs):
+        self.x = torch.cat([self.x, node_attrs], dim=-1)
+    
+    def concat(self, g, concat_edge=True, copy=False):
+        node_attrs = torch.cat([self.x, g.x], dim=-1)
+        global_attrs = None
+        if self.global_attrs is None:
+            global_attrs = g.global_attrs
+        elif g.global_attrs is not None:
+            global_attrs = torch.cat([self.global_attrs, g.global_attrs], dim=-1)
+        edge_attr = self.edge_attr
+        if concat_edge:
+            edge_attr = torch.cat([self.edge_attr, g.edge_attr], dim=-1)
+        g = self
+        if copy:
+            g = self.clone()
+        g.x = node_attrs
+        g.global_attrs = global_attrs
+        g.edge_attr = edge_attr
+        return g
+
+    def float(self):
+        self.x = self.x.float()
+        self.edge_attr = self.edge_attr.float()
+        if self.global_attrs is not None:
+            self.global_attrs = self.global_attrs.float()
+
+    def __getattr__(self, key):
+        # backward compatibility, TODO: remove in future
+        if key == 'node_attrs':
+            return self.x
+        if key == 'edge_attrs':
+            return self.edge_attr
+        if key == 'global_attrs' and key not in self._store:
+            return None
+        return super().__getattr__(key)
+
+    def __setattr__(self, key, value):
+        if key == 'node_attrs':
+            key = 'x'
+        elif key == 'edge_attrs':
+            key = 'edge_attr'
+        super().__setattr__(key, value)
 
 class Graph:
     def __init__(self, G, global_attrs, node_attrs, edge_attrs):

@@ -2,7 +2,8 @@ from email.mime import base
 from re import L
 from tkinter.ttk import setup_master
 import torch
-from torch.utils.data import Dataset
+from torch_geometric.data import Dataset, Data
+from torch_geometric.utils.convert import from_networkx
 import numpy as np
 import dm_control
 import dm_control.suite.swimmer as swimmer
@@ -12,7 +13,7 @@ from tqdm import tqdm
 
 import config
 from utils import *
-from graphs import Graph
+from graphs import Graph, GraphData
 
 
 class MujocoDataset(Dataset):
@@ -39,9 +40,12 @@ class MujocoDataset(Dataset):
 
         self.subset_idx = 0
 
+        self.classes = {key: [] for key in self.env_creator.keys}
         self.data = self.load_save() if load_from_path else None
         if self.data is None:
             self.generate_dataset()
+        for i, data in enumerate(self.data):
+            self.classes[data[-1]].append(i)
     
     def generate_dataset(self):
         self.subset_idx = 0
@@ -73,6 +77,9 @@ class MujocoDataset(Dataset):
             return None
         if self.shuffle:
             random.shuffle(dataset['data'])
+        self.classes = {key: [] for key in self.env_creator.keys}
+        for i, data in enumerate(dataset['data']):
+            self.classes[data[-1]].append(i)
         return dataset['data']
 
     def save_dataset(self):
@@ -114,7 +121,12 @@ class MujocoDataset(Dataset):
         if subset_idx != self.subset_idx:
             self.subset_idx = subset_idx
             self.data = self.load_save()
-        obs_old, action, obs_new, env_key = self.data[idx % dataset_size]
+        sampled_class = self.env_creator.sample_key()
+        if not self.save:
+            sampled_idx = idx % dataset_size
+        else:
+            sampled_idx = np.random.choice(self.classes[sampled_class], 1)[0]
+        obs_old, action, obs_new, env_key = self.data[sampled_idx]
         base_graph = self.env_creator.base_graphs[env_key]
         geom_names = self.env_creator.geom_names[env_key]
         edge_order = self.env_creator.edge_orders[env_key]
@@ -123,34 +135,24 @@ class MujocoDataset(Dataset):
         center = center_attrs(node_attrs_old, (0, 3))
         center_attrs(node_attrs_new, (0, 3), center)
         node_attrs_old = add_noise(node_attrs_old, self.noise)
-        graph_old = Graph.from_nx_graph(
-                        base_graph.copy(), 
-                        None, 
-                        node_attrs_old, 
-                        get_dynamic_edge_attrs(action, base_graph.edges, edge_order)
-                    )
+        edge_index = from_networkx(base_graph).edge_index
+        graph_old = GraphData(
+            edge_index,
+            None,
+            node_attrs_old,
+            edge_attrs=get_dynamic_edge_attrs(action, base_graph.edges, edge_order)
+        )
+        static_graph = GraphData(
+            edge_index,
+            self.env_creator.global_attrs[env_key],
+            self.env_creator.static_node_attrs[env_key],
+            edge_attrs=self.env_creator.static_edge_attrs[env_key]
+        )
         info = {
             'center': center,
-            'env_key': env_key,
-            'static_node_attrs': self.env_creator.static_node_attrs[env_key]
+            'env_key': env_key
         }
-        return graph_old, node_attrs_old, node_attrs_new, info
-
-    def get_collate_fn(self, concat=True):
-        def collate_fn(inp):
-            if concat:
-                x = Graph.empty()
-                for graph, _, _, _ in inp:
-                    x = Graph.union(x, graph)
-                x = [x]
-            else:
-                x = [graph for graph, _, _, _ in inp]
-            y_old = torch.cat([y for _, y, _, _ in inp], dim=0)
-            y_new = torch.cat([y for _, _, y, _ in inp], dim=0)
-            center = torch.cat([info['center'] for _, _, _, info in inp], dim=0)
-            static_node_attrs = torch.cat([info['static_node_attrs'] for _, _, _, info in inp], dim=0)
-            return x, y_old, y_new, center, static_node_attrs
-        return collate_fn
+        return graph_old, static_graph, Data(x=node_attrs_old), Data(x=node_attrs_new), info
 
 def test():
     from render import Renderer, generate_video

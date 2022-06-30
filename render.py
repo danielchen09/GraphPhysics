@@ -29,7 +29,7 @@ class Renderer:
                                     height=300, rgb1=[.2, .3, .4], rgb2=[.3, .4, .5])
         grid = self.arena.asset.add('material', name='grid', texture=chequered,
                             texrepeat=[5, 5], reflectance=.2)
-        self.arena.worldbody.add('geom', name='floor', type='plane', size=[2, 2, .1], material=grid)
+        self.arena.worldbody.add('geom', name='floor', type='plane', size=[2, 2, .1], pos=[0, 0, 0], material=grid)
         self.arena.worldbody.add('light', name='light0', pos=[0, 0, 5], dir=[0, 0, -1])
 
         self.arena.worldbody.add('camera', name='cam0', pos=[0, 0, 0], euler=[0, 0, 0])
@@ -39,19 +39,23 @@ class Renderer:
     def render(self, node_attrs, env_creator, env_key):
         # breakpoint()
         geom_names = copy.deepcopy(env_creator.geom_names[env_key])
-        ground_idx = geom_names.index(next(gn for gn in geom_names if gn in ['ground', 'floor']))
-        node_attrs = torch.cat([node_attrs[:ground_idx], node_attrs[ground_idx+1:]], dim=0)
-        geom_names.pop(ground_idx)
+        # ground_idx = geom_names.index(next(gn for gn in geom_names if gn in ['ground', 'floor']))
+        # node_attrs = torch.cat([node_attrs[:ground_idx], node_attrs[ground_idx+1:]], dim=0)
+        # geom_names.pop(ground_idx)
         sizes = env_creator.sizes[env_key]
         camera_config = env_creator.camera_configs[env_key]
 
         for i in range(len(geom_names)):
+            g_name = geom_names[i]
             if geom_names[i] in ['ground', 'floor']:
-                continue
+                g_name = 'floor'
+                node_attrs[i, 0:3] = 0
+                node_attrs[i, 3] = 1
+                node_attrs[i, 4:7] = 0
             pos = node_attrs[i, 0:3]
             quat = node_attrs[i, 3:7]
             size = sizes[i]
-            body = self.arena.worldbody.find('geom', geom_names[i])
+            body = self.arena.worldbody.find('geom', g_name)
             if body is not None:
                 body.pos = pos
                 body.quat = quat
@@ -61,10 +65,7 @@ class Renderer:
         physics = mjcf.Physics.from_mjcf_model(self.arena)
         cam = mujoco.MovableCamera(physics)
 
-        if not self.init:
-            self.center = node_attrs[:, 0:3].mean(axis=0).numpy()
-            self.init = True
-        # cam.set_pose(self.center, 5., 90, 0.)
+        self.center = node_attrs[:, 0:3].mean(axis=0).numpy()
         cam.set_pose(self.center, *camera_config)
         return cam.render()
 
