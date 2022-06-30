@@ -1,140 +1,125 @@
+from platform import node
 import torch
 from torch import nn
 import torch_geometric.nn as gnn
 import torch.nn.functional as F
 from dataset import MujocoDataset
+from torch_scatter import scatter_mean
 
 from utils import *
 import config
-from graphs import Graph
+from graphs import GraphData
 
 class EdgeNet(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, output_features, features=[256, 256]):
+    def __init__(self, global_features, node_features, edge_features, output_features, features=[512]):
         super(EdgeNet, self).__init__()
         features = [global_features + 2 * node_features + edge_features] + features + [output_features]
         self.net = make_nn(features)
     
-    def forward(self, g, ns, nr, e):
-        # g: global feature
-        # ns: sender node feature
-        # nr: receiver node feature
-        # e: edge feature
-        x = torch.cat([ns, nr, e], dim=-1)
+    def forward(self, src, dest, edge_attr, u, batch):
+        # src, dest: [E, F_x], where E is the number of edges.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u], where B is the number of graphs.
+        # batch: [E] with max entry B - 1.
+        x = torch.cat([src, dest, edge_attr, u[batch]], dim=-1)
         return self.net(x.float())
 
 
 class NodeNet(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, output_features, features=[256, 256]):
+    def __init__(self, global_features, node_features, edge_features, output_features, features=[512]):
         super(NodeNet, self).__init__()
-        features = [global_features + node_features + edge_features] + features + [output_features]
-        self.net = make_nn(features)
+        self.node_mlp_1 = make_nn([node_features + edge_features] + features)
+        self.node_mlp_2 = make_nn([node_features + features[-1] + global_features] + features + [output_features])
     
-    def forward(self, g, n, e):
-        # g: global feature
-        # n: node feature
-        # e: aggregated edge feature
-        x = torch.cat([n, e], dim=-1)
-        return self.net(x.float())
+    def forward(self, x, edge_index, edge_attr, u, batch):
+        # x: [N, F_x], where N is the number of nodes.
+        # edge_index: [2, E] with max entry N - 1.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u]
+        # batch: [N] with max entry B - 1.
+        row, col = edge_index
+        out = torch.cat([x[row], edge_attr], dim=-1)
+        out = self.node_mlp_1(out)
+        out = scatter_mean(out, col, dim=0, dim_size=x.size(0))
+        out = torch.cat([x, out, u[batch]], dim=-1)
+        return self.node_mlp_2(out)
 
 
 class GlobalNet(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, output_features, features=[256, 256]):
+    def __init__(self, global_features, node_features, edge_features, output_features, features=[512]):
         super(GlobalNet, self).__init__()
-        features = [global_features + node_features + edge_features] + features + [output_features]
+        features = [global_features + node_features] + features + [output_features]
         self.net = make_nn(features)
     
-    def forward(self, g, n, e):
-        # g: global feature
-        # n: aggregated node feature
-        # e: aggregated edge feature
-        x = torch.cat([n, e], dim=-1)
-        return self.net(x)
-
-
-class GGRU(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, hidden_size=20, num_layers=2):
-        super(GGRU, self).__init__()
-        self.has_global = global_features > 0
-        self.fg = nn.GRU(global_features, hidden_size, num_layers)
-        self.fn = nn.GRU(node_features, hidden_size, num_layers)
-        self.fe = nn.GRU(edge_features, hidden_size, num_layers)
-    
-    def forward(self, graphs, graph_h):
-        global_attrs = torch.stack([graph.global_attrs for graph in graphs])
-        node_attrs = torch.stack([graph.global_attrs for graph in graphs])
-        edge_attrs = torch.stack([graph.global_attrs for graph in graphs])
-        g_out, g_h = None, None
-        if self.has_global:
-            g_out, g_h = self.fg(global_attrs, graph_h.global_attrs)
-        n_out, n_h = self.fn(node_attrs, graph_h.node_attrs)
-        e_out, e_h = self.fe(edge_attrs, graph_h.edge_attrs)
-        graph_out = graphs[-1].copy(g_out, n_out, e_out)
-        graph_h = graph_h.copy(g_h, n_h, e_h)
-        return graph_out, graph_h
-
+    def forward(self, x, edge_index, edge_attr, u, batch):
+        # x: [N, F_x], where N is the number of nodes.
+        # edge_index: [2, E] with max entry N - 1.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u]
+        # batch: [N] with max entry B - 1.
+        out = torch.cat([u, scatter_mean(x, batch, dim=0)], dim=1)
+        return self.net(out)
 
 class GN(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, global_out_features, node_out_features, edge_out_features):
+    def __init__(self, global_features, node_features, edge_features,
+                       global_out_features, node_out_features, edge_out_features):
         super(GN, self).__init__()
-        self.has_global = global_features > 0
-        self.fe = EdgeNet(global_features, node_features, edge_features, edge_out_features)
-        self.fn = NodeNet(global_features, node_features, edge_out_features, node_out_features)
-        self.fg = GlobalNet(global_features, node_out_features, edge_out_features, global_out_features)
+        self.layers = nn.ModuleList([
+            self.make_layer(global_features, node_features, edge_features, 512, 512, 512),
+            self.make_layer(512, 512, 512, 512, 512, 512),
+            self.make_layer(512, 512, 512, 512, 512, 512),
+            self.make_layer(512, 512, 512, 512, 512, 512),
+            self.make_layer(512, 512, 512, global_out_features, node_out_features, edge_out_features),
+        ])
+
+    def forward(self, x, edge_index, edge_attr, u, batch):
+        for layer in self.layers[:-1]:
+            x, edge_attr, u = layer(x, edge_index, edge_attr, u, batch)
+            x, edge_attr, u = F.relu(x), F.relu(edge_attr), F.relu(u)
+            x, edge_attr, u = F.dropout(x, p=config.DROPOUT), F.dropout(edge_attr, p=config.DROPOUT), F.dropout(u, p=config.DROPOUT)
+        return self.layers[-1](x, edge_index, edge_attr, u, batch)
+
     
-    def forward(self, graph):
-        # edge update
-        ns = torch.stack([graph.node_attrs[graph.node_index[edge[0]]] for edge in graph.G.edges]).to(config.DEVICE)
-        nr = torch.stack([graph.node_attrs[graph.node_index[edge[1]]] for edge in graph.G.edges]).to(config.DEVICE)
-        e = graph.edge_attrs
-        g = graph.global_attrs
-        
-        e_out = self.fe(g, ns, nr, e)
-        
-        # node update
-        in_edges = torch.stack([torch.stack([e_out[graph.edge_index[edge]] for edge in graph.G.in_edges(node)]).sum(dim=0) for node in graph.G.nodes])
-        n = graph.node_attrs
-        n_out = self.fn(g, n, in_edges)
-
-        # global update
-        g_out = torch.tensor([])
-        if self.has_global:
-            e_sum = torch.sum(e_out, dim=0)
-            n_sum = torch.sum(n_out, dim=0)
-            g_out = self.fg(g, n_sum, e_sum)
-        
-        return graph.copy(g_out, n_out, e_out)
-
+    def make_layer(self, global_features, node_features, edge_features, 
+                   global_out_features, node_out_features, edge_out_features):
+        return gnn.MetaLayer(
+            EdgeNet(global_features, node_features, edge_features, edge_out_features),
+            NodeNet(global_features, node_features, edge_out_features, node_out_features),
+            GlobalNet(global_features, node_out_features, edge_out_features, global_out_features)
+        )
 
 class ForwardModel(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, hidden_features=128):
+    def __init__(self, global_features, node_features, edge_features, out_features):
         super(ForwardModel, self).__init__()
-        self.gn1 = GN(global_features, node_features, edge_features, 0, hidden_features, hidden_features)
-        self.gn2 = GN(global_features + 0, node_features + hidden_features, edge_features + hidden_features, global_features, node_features, edge_features)
+        self.gn1 = gnn.MetaLayer(
+            EdgeNet(global_features, node_features, edge_features, edge_features, config.DM_HIDDEN_FEATURES),
+            NodeNet(global_features, node_features, edge_features, node_features, config.DM_HIDDEN_FEATURES),
+            GlobalNet(global_features, node_features, edge_features, global_features, config.DM_HIDDEN_FEATURES)
+        )
+        self.gn2 = gnn.MetaLayer(
+            EdgeNet(global_features * 2, node_features * 2, edge_features * 2, edge_features, config.DM_HIDDEN_FEATURES),
+            NodeNet(global_features * 2, node_features * 2, edge_features, node_features, config.DM_HIDDEN_FEATURES),
+            GlobalNet(global_features * 2, node_features, edge_features, global_features, config.DM_HIDDEN_FEATURES)
+        )
+        self.out_features = out_features
     
-    def forward(self, g_norm):
-        g_norm = g_norm.to(config.DEVICE)
-        g_1 = self.gn1(g_norm)
-        g_concat = Graph.concat(g_norm, g_1)
-        return self.gn2(g_concat).node_attrs
-    
-    def predict(self, g, norm_in, norm_out):
-        g_norm = norm_in.normalize(g)
-        delta_y_pred = self.forward(g_norm)
-        delta_y_pred = norm_out.invnormalize(delta_y_pred)
-        return g.node_attrs + delta_y_pred
+    def forward(self, graph):
+        graph.float()
+        graph = graph.to(config.DEVICE)
 
-
-class RecurrentForwardModel(nn.Module):
-    def __init__(self, global_features, node_features, edge_features, hidden_features=128, gru_hidden_size=20, gru_layers=2):
-        super(RecurrentForwardModel, self).__init__()
-        self.ggru = GGRU(global_features, node_features, edge_features)
-        self.gn = GN(global_features + 0, node_features + gru_hidden_size, edge_features + gru_hidden_size)
+        x, edge_attr, u = self.gn1(graph.x, graph.edge_index, graph.edge_attr, graph.global_attrs, graph.batch)
+        g1 = type(graph)(graph.edge_index, u, x, edge_attr)
+        g_cat = graph.concat(g1, concat_edge=True)
+        return self.gn2(g_cat.x, g_cat.edge_index, g_cat.edge_attr, g_cat.global_attrs, g_cat.batch)[0][:, :self.out_features]
         
-    def forward(self, g_norm, g_h):
-        g_1, g_h = self.ggru(g_norm, g_h)
-        g_concat = Graph.concat(g_norm, g_1)
-        return self.gn2(g_concat).node_attrs, g_h
-    
+    def predict(self, g, norm_in, norm_out, copy=True, static_graph=None):
+        norm_in.normalize(g)
+        g_cat = g.concat(static_graph, copy=True)
+        delta_y_pred = self.forward(g_cat)
+        delta_y_pred = norm_out.invnormalize(delta_y_pred)
+        original = norm_in.node_normalizer.invnormalize(g.node_attrs)
+        return original + delta_y_pred.cpu()
+
 
 class GCNForwardModel(nn.Module):
     def __init__(self, in_features, out_features, hidden_features=config.DM_HIDDEN_FEATURES):
@@ -166,6 +151,16 @@ class GCNForwardModel(nn.Module):
         if not copy:
             original = norm_in.node_normalizer.invnormalize(g.node_attrs)
         return original + delta_y_pred.cpu()
+
+class ConstantModel(nn.Module):
+    def __init__(self):
+        super(ConstantModel, self).__init__()
+    
+    def forward(self, x):
+        return x
+
+    def predict(self, g, norm_in, norm_out, copy=True, static_graph=None):
+        return g.x
 
 if __name__ == '__main__':
     import dm_control.suite.swimmer as swimmer

@@ -10,47 +10,32 @@ from matplotlib import animation
 from scipy.spatial.transform import Rotation as R
 from dataset import MujocoDataset
 from env import *
-from torch_geometric.utils.convert import from_networkx
+from torch_geometric.utils.convert import from_networkx, to_networkx
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
+from torch_scatter import scatter_mean
+from tqdm import tqdm
+import pandas as pd
 
 from utils import *
 from render import generate_video
 from env import *
 from dataset import MujocoDataset
+from render import Renderer
+from train import test
 
-class TestData(Data):
-    def __init__(self, G):
-        print(G is None)
-        g = from_networkx(G)
-        super(TestData, self).__init__(torch.randn(5, 13), g.edge_index, torch.randn(8, 7))
-        self.z = torch.randn(1)
-        self.G = G
+envs = ['swimmer', 'cheetah', 'acrobot', 'pendulum']
+data = []
+for env in envs:
+    error = test('', env=env, save_path=f'results/test_{env}.mp4')
+    data.append(['GN', env, error])
+    const_error = test('constant', env=env, trials=1, save_path='test_result.mp4')
+    data.append(['Constant', env, const_error])
 
-    def update(self):
-        self.x = torch.randn(5, 13)
+df = pd.DataFrame(data, columns=['group', 'column', 'val'])
+df.pivot("column", "group", "val").plot(kind='bar')
+plt.ylabel('error')
+plt.xlabel('environment')
 
-class TestDataset(Dataset):
-    def __init__(self):
-        super(TestDataset, self).__init__()
-    
-    def __getitem__(self, idx):
-        G = nx.path_graph(5).to_directed()
-        return TestData(G), torch.tensor([5, 5])
-
-    def __len__(self):
-        return 2
-
-# ds = TestDataset()
-# dl = DataLoader(ds, batch_size=2)
-# it = iter(dl)
-# breakpoint()
-# d = next(it)
-# print(d)
-
-ds = MujocoDataset(CompositeEnvCreator(), n_runs=1, n_steps=20)
-for x in ds:
-    print(x[0] is None)
-dl = DataLoader(ds, batch_size=2)
-for x in dl:
-    print(x)
+plt.savefig('test.png')
+plt.show()

@@ -1,5 +1,6 @@
 from turtle import update
 from utils import *
+from graphs import GraphData
 
 class Normalizer:
     def __init__(self):
@@ -48,12 +49,8 @@ class GraphNormalizer(Normalizer):
         self.edge_normalizer = Normalizer()
 
     def normalize(self, graph, copy=True):
-        if copy:
-            graph = graph.copy()
-        node_norm = self.node_normalizer.normalize(graph.node_attrs)
-        edge_norm = self.edge_normalizer.normalize(graph.edge_attrs)
-        graph.update(None, node_norm, edge_norm)
-        return graph
+        graph.x = self.node_normalizer.normalize(graph.node_attrs)
+        graph.edge_attr = self.edge_normalizer.normalize(graph.edge_attrs)
     
     def update(self, graph):
         self.node_normalizer.update(graph.node_attrs)
@@ -65,11 +62,11 @@ class GraphNormalizer(Normalizer):
         return self
 
 if __name__ == '__main__':
-    from graphs import SwimmerGraph
-    from dataset import SwimmerDataset
+    from dataset import MujocoDataset
+    from env import CompositeEnvCreator
 
-    ds = SwimmerDataset(n_runs=1)
-    sg, _ = ds[0]
+    ds = MujocoDataset(CompositeEnvCreator(), n_runs=1)
+    sg = ds[0][0]
 
     normalizer = GraphNormalizer()
     print(sg)
