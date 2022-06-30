@@ -9,3 +9,15 @@ Left: predicted, Right: actual
 ![acrobot](results/test_acrobot.gif)
 ![swimmer](results/test_swimmer.gif)
 ![pendulum](results/test_pendulum.gif)
+
+# Usage
+training:
+```
+python main.py --mode=train
+```
+
+testing:
+```
+python main.py --mode=test --env=[env]
+```
+
